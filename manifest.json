@@ -1,0 +1,13 @@
+﻿{
+  "name": "塔防守卫战",
+  "short_name": "塔防",
+  "description": "一款浏览器塔防策略游戏",
+  "start_url": "./tower-defense.html",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#141a16",
+  "theme_color": "#1e2a20",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
