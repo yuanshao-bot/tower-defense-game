@@ -26,17 +26,23 @@ h1{font-size:20px;letter-spacing:2px}
 .tower-btn .hk{color:#5a6f5c;font-size:10px}
 #stage{position:relative}
 canvas{display:block;width:100%;background:#000;border-radius:10px}
-#overlay{position:absolute;inset:0;background:rgba(10,14,10,0.9);border-radius:10px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:24px;z-index:10}
+#overlay{position:absolute;inset:0;background:rgba(10,14,10,0.92);border-radius:10px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:24px;z-index:10}
 #overlay.hidden{display:none}
 #overlay h2{font-size:26px;margin-bottom:8px}
 #overlay p{color:#b8c8b4;margin:4px 0;font-size:14px}
 #overlay .big{margin-top:16px;padding:10px 36px;font-size:16px}
+#diffBox{display:flex;gap:8px;margin:14px 0}
+.diff-btn{background:#1e2a20;border:2px solid #2f4032;border-radius:10px;padding:10px 18px;cursor:pointer;color:inherit;font:inherit;font-size:14px;transition:border-color .15s}
+.diff-btn:hover{border-color:#4a6350}
+.diff-btn.active{border-color:#ffd76a;background:#2a3526}
+.diff-btn small{display:block;color:#9db09c;font-size:11px;margin-top:2px}
 .btn{background:#3a7d44;color:#fff;border:none;border-radius:8px;padding:8px 14px;font:inherit;font-size:12px;cursor:pointer;transition:background .15s}
 .btn:hover{background:#4a9a56}
 .btn:disabled{background:#2a3a2c;color:#6b806c;cursor:default}
 .btn.danger{background:#a04444}.btn.danger:hover{background:#c05555}
 .btn.gold{background:#b8912e}.btn.gold:hover{background:#d4a83a}
 .btn.blue{background:#2d6da8}.btn.blue:hover{background:#3a85c4}
+.btn.red{background:#c0392b}.btn.red:hover{background:#e74c3c}
 #controls{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
 #controls .btn{flex:1;min-width:80px}
 #controls .btn.n{flex:0.5;min-width:70px}
@@ -55,8 +61,13 @@ kbd{background:#2a3a2c;border-radius:4px;padding:1px 5px;font-size:11px;color:#c
 <canvas id="game" width="640" height="480"></canvas>
 <div id="overlay">
 <h2>🏰 塔防守卫战</h2>
-<p>敌人沿道路和空中航线进攻，点击空地建造炮台防守。</p>
-<p style="margin-top:12px;color:#8fa88c;font-size:13px"><kbd>1-8</kbd> 选炮台 · <kbd>空格</kbd> 暂停 · <kbd>N</kbd> 提前下一波</p>
+<p>敌人会攻击你的炮台！炮台有血量和护甲，可分别升级攻击和防御。</p>
+<div id="diffBox">
+<button class="diff-btn active" data-d="easy">😊 简单<small>💰300 ❤️30 敌人弱</small></button>
+<button class="diff-btn" data-d="normal">😐 普通<small>💰150 ❤️20 平衡</small></button>
+<button class="diff-btn" data-d="hard">😨 困难<small>💰100 ❤️15 敌人强</small></button>
+<button class="diff-btn" data-d="hell">💀 地狱<small>💰80 ❤️10 敌人凶</small></button>
+</div>
 <button class="btn big" id="startBtn">开始游戏</button>
 </div>
 </div>
@@ -67,7 +78,7 @@ kbd{background:#2a3a2c;border-radius:4px;padding:1px 5px;font-size:11px;color:#c
 <button class="btn n" id="muteBtn">🔊</button>
 </div>
 <div id="info"></div>
-<div id="help">💡 点击已建炮台切换索敌优先级（最前/最后/最强/最弱）、升级或出售。金矿塔产金币，毒液塔持续伤害，电击塔连锁闪电，导弹塔高伤溅射。波次自动开始，Boss半血召唤小怪！</div>
+<div id="help">💡 敌人会攻击范围内的炮台！炮台血量归零会被摧毁。点击炮台可分别升级<b style="color:#ff6b4a">攻击</b>（伤害/射程/攻速）和<b style="color:#59c3e3">防御</b>（血量/护甲），还可花费金币修理。难度影响初始资源与敌人强度。</div>
 </div>
 <script>
 'use strict';
@@ -78,41 +89,54 @@ const FLY_PATH=[{x:-30,y:100},{x:670,y:100}];
 const PATH_CELLS=new Set();
 for(let i=0;i<WAYPOINTS.length-1;i++){const a=WAYPOINTS[i],b=WAYPOINTS[i+1];const steps=Math.ceil(Math.hypot(b.x-a.x,b.y-a.y)/CELL)+1;for(let s=0;s<=steps;s++){const x=a.x+(b.x-a.x)*s/steps,y=a.y+(b.y-a.y)*s/steps;const c=Math.floor(x/CELL),r=Math.floor(y/CELL);if(c>=0&&c<COLS&&r>=0&&r<ROWS)PATH_CELLS.add(c+','+r);}}
 const TOWER_TYPES={
-gun:{name:'机枪塔',cost:50,range:100,cd:0.4,dmg:9,color:'#9aa5b1',barrel:'#57616e',kind:'bullet',upCost:45,desc:'快速单体'},
-cannon:{name:'火炮塔',cost:120,range:130,cd:1.3,dmg:34,splash:55,color:'#c0563e',barrel:'#7c2f1e',kind:'shell',upCost:110,desc:'范围爆炸'},
-frost:{name:'冰霜塔',cost:80,range:110,cd:0.9,dmg:5,slow:0.5,slowT:1.8,color:'#59c3e3',barrel:'#2b7a94',kind:'pulse',upCost:70,desc:'减速'},
-sniper:{name:'狙击塔',cost:200,range:230,cd:1.9,dmg:85,color:'#7fae5a',barrel:'#43672c',kind:'beam',upCost:160,desc:'远程高伤'},
-mine:{name:'金矿塔',cost:100,range:0,cd:3,dmg:0,color:'#ffd76a',barrel:'#b8912e',kind:'mine',upCost:80,desc:'产金币'},
-poison:{name:'毒液塔',cost:90,range:100,cd:1,dmg:6,poisonDmg:4,poisonDur:3,color:'#6ab04c',barrel:'#3a7d23',kind:'poison',upCost:80,desc:'毒素持续'},
-tesla:{name:'电击塔',cost:150,range:120,cd:0.8,dmg:18,chain:3,color:'#f5e663',barrel:'#c4a000',kind:'chain',upCost:120,desc:'连锁闪电'},
-missile:{name:'导弹塔',cost:250,range:200,cd:2.5,dmg:120,splash:40,color:'#666',barrel:'#333',kind:'missile',upCost:200,desc:'追踪高伤'}
+gun:{name:'机枪塔',cost:50,range:100,cd:0.4,dmg:9,hp:80,color:'#9aa5b1',barrel:'#57616e',kind:'bullet',upCost:45,desc:'快速单体'},
+cannon:{name:'火炮塔',cost:120,range:130,cd:1.3,dmg:34,splash:55,hp:120,color:'#c0563e',barrel:'#7c2f1e',kind:'shell',upCost:110,desc:'范围爆炸'},
+frost:{name:'冰霜塔',cost:80,range:110,cd:0.9,dmg:5,slow:0.5,slowT:1.8,hp:80,color:'#59c3e3',barrel:'#2b7a94',kind:'pulse',upCost:70,desc:'减速'},
+sniper:{name:'狙击塔',cost:200,range:230,cd:1.9,dmg:85,hp:100,color:'#7fae5a',barrel:'#43672c',kind:'beam',upCost:160,desc:'远程高伤'},
+mine:{name:'金矿塔',cost:100,range:0,cd:3,dmg:0,hp:60,color:'#ffd76a',barrel:'#b8912e',kind:'mine',upCost:80,desc:'产金币'},
+poison:{name:'毒液塔',cost:90,range:100,cd:1,dmg:6,poisonDmg:4,poisonDur:3,hp:80,color:'#6ab04c',barrel:'#3a7d23',kind:'poison',upCost:80,desc:'毒素持续'},
+tesla:{name:'电击塔',cost:150,range:120,cd:0.8,dmg:18,chain:3,hp:80,color:'#f5e663',barrel:'#c4a000',kind:'chain',upCost:120,desc:'连锁闪电'},
+missile:{name:'导弹塔',cost:250,range:200,cd:2.5,dmg:120,splash:40,hp:120,color:'#666',barrel:'#333',kind:'missile',upCost:200,desc:'追踪高伤'}
 };
 const TARGET_MODES=['first','last','strong','weak'];
 const TARGET_LABELS={first:'最前',last:'最后',strong:'最强',weak:'最弱'};
 const ENEMY_TYPES={
-normal:{hp:32,speed:62,reward:8,leak:1,r:11,color:'#e05252',flying:false},
-fast:{hp:18,speed:115,reward:10,leak:1,r:9,color:'#e8a33d',flying:false},
-tank:{hp:130,speed:34,reward:26,leak:2,r:15,color:'#8e6cc0',flying:false},
-boss:{hp:650,speed:26,reward:130,leak:5,r:19,color:'#d13b3b',flying:false,boss:true},
-bat:{hp:14,speed:140,reward:12,leak:1,r:8,color:'#b06ad4',flying:true}
+normal:{hp:30,speed:62,reward:8,leak:1,r:11,color:'#e05252',flying:false,atk:8,atkCd:1.2},
+fast:{hp:16,speed:115,reward:10,leak:1,r:9,color:'#e8a33d',flying:false,atk:5,atkCd:0.8},
+tank:{hp:120,speed:34,reward:26,leak:2,r:15,color:'#8e6cc0',flying:false,atk:20,atkCd:1.5},
+boss:{hp:600,speed:26,reward:130,leak:5,r:19,color:'#d13b3b',flying:false,boss:true,atk:40,atkCd:1.5},
+bat:{hp:13,speed:140,reward:12,leak:1,r:8,color:'#b06ad4',flying:true,atk:4,atkCd:1}
 };
-const state={running:false,paused:false,over:false,hp:20,maxHp:20,money:150,wave:0,kills:0,totalDmg:0,enemies:[],towers:[],bullets:[],effects:[],spawnQueue:[],spawnTimer:0,waveActive:false,betweenTimer:0,selectedType:null,selectedTower:null,speedIdx:0,muted:false,autoWave:true,time:0,flash:0,shake:0,shakeX:0,shakeY:0,mx:-100,my:-100};
+const DIFFICULTIES={
+easy:{name:'简单',money:300,hp:30,ehpMul:0.8,eatkMul:0.7,rewMul:1.2},
+normal:{name:'普通',money:150,hp:20,ehpMul:1,eatkMul:1,rewMul:1},
+hard:{name:'困难',money:100,hp:15,ehpMul:1.3,eatkMul:1.4,rewMul:0.9},
+hell:{name:'地狱',money:80,hp:10,ehpMul:1.8,eatkMul:2,rewMul:0.8}
+};
 const SPEEDS=[1,2,3,5,10];
+const state={running:false,paused:false,over:false,diff:'normal',hp:20,maxHp:20,money:150,wave:0,kills:0,totalDmg:0,towersLost:0,enemies:[],towers:[],bullets:[],effects:[],spawnQueue:[],spawnTimer:0,waveActive:false,betweenTimer:0,selectedType:null,selectedTower:null,speedIdx:0,muted:false,autoWave:true,time:0,flash:0,shake:0,shakeX:0,shakeY:0,mx:-100,my:-100};
 let audioCtx=null;
 function beep(f,d,t,v){if(state.muted)return;try{audioCtx=audioCtx||new(window.AudioContext||window.webkitAudioContext)();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=t||'square';o.frequency.value=f;g.gain.value=v||0.03;o.connect(g);g.connect(audioCtx.destination);o.start();g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+d);o.stop(audioCtx.currentTime+d);}catch(e){}}
-function towerStats(t){const d=TOWER_TYPES[t.type],l=t.level;return{dmg:d.dmg*Math.pow(1.5,l-1),range:d.range>0?d.range*(1+0.12*(l-1)):0,cd:d.cd*Math.pow(0.88,l-1),splash:d.splash?d.splash*(1+0.1*(l-1)):0,slow:d.slow||0,slowT:d.slowT||0,chain:d.chain?d.chain+(l-1):0,poisonDmg:d.poisonDmg?d.poisonDmg*Math.pow(1.5,l-1):0,poisonDur:d.poisonDur||0,mineRate:t.type==='mine'?Math.round(5*Math.pow(1.5,l-1)):0};}
-function upCost(t){return Math.round(TOWER_TYPES[t.type].upCost*(1+0.7*(t.level-1)));}
+function towerStats(t){const d=TOWER_TYPES[t.type],a=t.atkLv,df=t.defLv;return{dmg:d.dmg*Math.pow(1.5,a-1),range:d.range>0?d.range*(1+0.12*(a-1)):0,cd:d.cd*Math.pow(0.88,a-1),splash:d.splash?d.splash*(1+0.1*(a-1)):0,slow:d.slow||0,slowT:d.slowT||0,chain:d.chain?d.chain+(a-1):0,poisonDmg:d.poisonDmg?d.poisonDmg*Math.pow(1.5,a-1):0,poisonDur:d.poisonDur||0,mineRate:t.type==='mine'?Math.round(5*Math.pow(1.5,a-1)):0,maxHp:Math.round(d.hp*Math.pow(1.4,df-1)),armor:(df-1)*8};}
+function atkUpCost(t){return Math.round(TOWER_TYPES[t.type].upCost*(1+0.7*(t.atkLv-1)));}
+function defUpCost(t){return Math.round(TOWER_TYPES[t.type].upCost*0.7*(1+0.6*(t.defLv-1)));}
 function sellValue(t){return Math.floor(t.invested*0.6);}
-function buildWave(n){const q=[],m=1+(n-1)*0.15;const push=(t,c)=>{for(let i=0;i<c;i++)q.push({type:t,hpMul:m});};push('normal',6+Math.floor(n*1.5));if(n>=2)push('fast',Math.floor(n*1.1));if(n>=3)push('tank',Math.max(1,Math.floor((n-2)/2)));if(n>=4)push('bat',Math.floor(n*0.8));if(n%5===0)push('boss',Math.floor(n/5));return q;}
-function spawnEnemy(it){const d=ENEMY_TYPES[it.type];if(d.flying){state.enemies.push({type:it.type,x:FLY_PATH[0].x,y:FLY_PATH[0].y,wp:1,dist:0,flying:true,hp:d.hp*it.hpMul,maxHp:d.hp*it.hpMul,speed:d.speed,slow:0,slowT:0,reward:d.reward,leak:d.leak,r:d.r,color:d.color,dead:false,poison:null});}else{state.enemies.push({type:it.type,x:WAYPOINTS[0].x,y:WAYPOINTS[0].y,wp:1,dist:0,flying:false,hp:d.hp*it.hpMul,maxHp:d.hp*it.hpMul,speed:d.speed,slow:0,slowT:0,reward:d.reward,leak:d.leak,r:d.r,color:d.color,dead:false,minionSpawned:false,poison:null});}}
+function repairCost(t){const s=towerStats(t);return Math.ceil((s.maxHp-t.hp)*0.3);}
+function buildWave(n){const q=[],m=1+(n-1)*0.10;const push=(t,c)=>{for(let i=0;i<c;i++)q.push({type:t,hpMul:m});};push('normal',6+Math.floor(n*1.5));if(n>=2)push('fast',Math.floor(n*1.1));if(n>=3)push('tank',Math.max(1,Math.floor((n-2)/2)));if(n>=4)push('bat',Math.floor(n*0.8));if(n%5===0)push('boss',Math.floor(n/5));return q;}
+function spawnEnemy(it){const d=ENEMY_TYPES[it.type],dif=DIFFICULTIES[state.diff];const hp=d.hp*it.hpMul*dif.ehpMul;if(d.flying){state.enemies.push({type:it.type,x:FLY_PATH[0].x,y:FLY_PATH[0].y,wp:1,dist:0,flying:true,hp,maxHp:hp,speed:d.speed,slow:0,slowT:0,reward:Math.round(d.reward*dif.rewMul),leak:d.leak,r:d.r,color:d.color,dead:false,poison:null,atk:d.atk,atkCdMax:d.atkCd,atkCd:0});}else{state.enemies.push({type:it.type,x:WAYPOINTS[0].x,y:WAYPOINTS[0].y,wp:1,dist:0,flying:false,hp,maxHp:hp,speed:d.speed,slow:0,slowT:0,reward:Math.round(d.reward*dif.rewMul),leak:d.leak,r:d.r,color:d.color,dead:false,minionSpawned:false,poison:null,atk:d.atk,atkCdMax:d.atkCd,atkCd:0});}}
 function shake(a){state.shake=Math.min(10,state.shake+a);}
 function findNearestWp(x,y){let b=0,bd=1/0;for(let i=0;i<WAYPOINTS.length;i++){const d=Math.hypot(WAYPOINTS[i].x-x,WAYPOINTS[i].y-y);if(d<bd){bd=d;b=i;}}return Math.max(1,b);}
-function bossSummon(b){for(let i=0;i<2;i++){const d=ENEMY_TYPES.normal,m=1+(state.wave-1)*0.1;state.enemies.push({type:'normal',x:b.x-10+i*20,y:b.y,wp:findNearestWp(b.x,b.y),dist:b.dist*0.9,flying:false,hp:d.hp*m*0.5,maxHp:d.hp*m*0.5,speed:d.speed,slow:0,slowT:0,reward:4,leak:1,r:d.r,color:d.color,dead:false,minionSpawned:true,poison:null});}state.effects.push({type:'text',x:b.x,y:b.y-25,txt:'召唤小怪!',life:1,max:1,color:'#d13b3b'});beep(200,0.2,'sawtooth',0.04);}
+function bossSummon(b){for(let i=0;i<2;i++){const d=ENEMY_TYPES.normal,m=1+(state.wave-1)*0.1;state.enemies.push({type:'normal',x:b.x-10+i*20,y:b.y,wp:findNearestWp(b.x,b.y),dist:b.dist*0.9,flying:false,hp:d.hp*m*0.5,maxHp:d.hp*m*0.5,speed:d.speed,slow:0,slowT:0,reward:4,leak:1,r:d.r,color:d.color,dead:false,minionSpawned:true,poison:null,atk:d.atk,atkCdMax:d.atkCd,atkCd:0});}state.effects.push({type:'text',x:b.x,y:b.y-25,txt:'召唤小怪!',life:1,max:1,color:'#d13b3b'});beep(200,0.2,'sawtooth',0.04);}
 function damageEnemy(e,dmg){if(e.dead)return;e.hp-=dmg;state.totalDmg+=dmg;state.effects.push({type:'dmg',x:e.x+(Math.random()-0.5)*12,y:e.y-e.r-4,txt:String(Math.round(dmg)),life:0.6,max:0.6,color:dmg>=50?'#ff6b4a':'#ffe08a'});if(e.hp<=0){e.dead=true;state.money+=e.reward;state.kills++;state.effects.push({type:'boom',x:e.x,y:e.y,r:e.r+8,life:0.25,max:0.25});state.effects.push({type:'text',x:e.x,y:e.y-e.r-14,txt:'+'+e.reward,life:0.7,max:0.7,color:'#ffd76a'});shake(2);}}
 function applyPoison(e,dmg,dur){if(e.dead)return;if(!e.poison||e.poison.dmg<dmg){e.poison={dmg:dmg,time:dur,tick:0};}}
+function damageTower(t,dmg,srcX,srcY){if(t.hp<=0)return;const s=towerStats(t);const real=Math.max(1,Math.round(dmg-s.armor));t.hp-=real;if(srcX!==undefined)state.effects.push({type:'dmg',x:t.x+(Math.random()-0.5)*12,y:t.y-20,txt:String(real),life:0.5,max:0.5,color:'#ff8a8a'});if(t.hp<=0){t.hp=0;destroyTower(t);}}
+function destroyTower(t){state.towers=state.towers.filter(x=>x!==t);state.towersLost++;state.effects.push({type:'boom',x:t.x,y:t.y,r:30,life:0.4,max:0.4});state.effects.push({type:'text',x:t.x,y:t.y-20,txt:'炮台被摧毁!',life:1,max:1,color:'#ff4a4a'});shake(4);beep(80,0.3,'sawtooth',0.05);if(state.selectedTower===t){state.selectedTower=null;updateInfo();}}
 function startWave(early){if(state.waveActive||state.over||!state.running)return;if(early&&state.wave>0){const b=Math.max(0,Math.ceil(state.betweenTimer))*2;state.money+=b;state.effects.push({type:'text',x:320,y:200,txt:'提前开战 +'+b,life:1,max:1,color:'#ffd76a'});}state.wave++;state.spawnQueue=buildWave(state.wave);state.spawnTimer=0.5;state.waveActive=true;state.betweenTimer=0;state.effects.push({type:'wave',txt:'第 '+state.wave+' 波',life:1.6,max:1.6});beep(440,0.15,'triangle',0.05);setTimeout(()=>beep(560,0.2,'triangle',0.05),150);}
-function gameOver(){state.over=true;state.hp=0;beep(120,0.5,'sawtooth',0.06);let best=0;try{best=parseInt(localStorage.getItem('td_best')||'0',10)||0;if(state.wave>best){best=state.wave;localStorage.setItem('td_best',String(best));}}catch(e){best=state.wave;}const ov=document.getElementById('overlay');ov.classList.remove('hidden');ov.innerHTML='<h2>💀 防线失守！</h2><p>坚守了 <b style="color:#8fd4ff">第 '+state.wave+' 波</b></p><p>击杀 <b style="color:#ffd76a">'+state.kills+'</b> · 总伤害 <b style="color:#ff6b4a">'+Math.round(state.totalDmg)+'</b> · 纪录 第'+best+'波</p><button class="btn big" id="restartBtn">重新开始</button>';document.getElementById('restartBtn').onclick=restart;}
-function restart(){state.running=true;state.paused=false;state.over=false;state.hp=20;state.money=150;state.wave=0;state.kills=0;state.totalDmg=0;state.enemies=[];state.towers=[];state.bullets=[];state.effects=[];state.spawnQueue=[];state.waveActive=false;state.betweenTimer=0;state.selectedType=null;state.selectedTower=null;state.speedIdx=0;state.flash=0;state.shake=0;document.getElementById('speedBtn').textContent='⏩ x1';document.getElementById('overlay').classList.add('hidden');updateToolbar();updateInfo();}
+function gameOver(){state.over=true;state.hp=0;beep(120,0.5,'sawtooth',0.06);const dif=DIFFICULTIES[state.diff];let best=0;try{const key='td_best_'+state.diff;best=parseInt(localStorage.getItem(key)||'0',10)||0;if(state.wave>best){best=state.wave;localStorage.setItem(key,String(best));}}catch(e){best=state.wave;}const ov=document.getElementById('overlay');ov.classList.remove('hidden');ov.innerHTML='<h2>💀 防线失守！</h2><p>'+dif.name+'难度 · 坚守了 <b style="color:#8fd4ff">第 '+state.wave+' 波</b></p><p>击杀 <b style="color:#ffd76a">'+state.kills+'</b> · 总伤害 <b style="color:#ff6b4a">'+Math.round(state.totalDmg)+'</b> · 炮台损失 <b style="color:#ff8a8a">'+state.towersLost+'</b></p><p style="color:#8fa88c;font-size:12px">最高纪录 第'+best+'波</p><button class="btn big" id="restartBtn">重新开始</button>';document.getElementById('restartBtn').onclick=showStart;}
+function showStart(){state.running=false;state.over=false;state.paused=false;state.hp=DIFFICULTIES[state.diff].hp;state.maxHp=DIFFICULTIES[state.diff].hp;state.money=DIFFICULTIES[state.diff].money;state.wave=0;state.kills=0;state.totalDmg=0;state.towersLost=0;state.enemies=[];state.towers=[];state.bullets=[];state.effects=[];state.spawnQueue=[];state.waveActive=false;state.betweenTimer=0;state.selectedType=null;state.selectedTower=null;state.speedIdx=0;state.flash=0;state.shake=0;document.getElementById('speedBtn').textContent='⏩ x1';const ov=document.getElementById('overlay');ov.classList.remove('hidden');ov.innerHTML='<h2>🏰 塔防守卫战</h2><p>敌人会攻击你的炮台！炮台有血量和护甲，可分别升级攻击和防御。</p><div id="diffBox"><button class="diff-btn" data-d="easy">😊 简单<small>💰300 ❤️30 敌人弱</small></button><button class="diff-btn" data-d="normal">😐 普通<small>💰150 ❤️20 平衡</small></button><button class="diff-btn" data-d="hard">😨 困难<small>💰100 ❤️15 敌人强</small></button><button class="diff-btn" data-d="hell">💀 地狱<small>💰80 ❤️10 敌人凶</small></button></div><button class="btn big" id="startBtn">开始游戏</button>';bindStartUI();}
+function bindStartUI(){
+document.querySelectorAll('.diff-btn').forEach(b=>{b.onclick=function(){document.querySelectorAll('.diff-btn').forEach(x=>x.classList.remove('active'));this.classList.add('active');state.diff=this.getAttribute('data-d');};});
+const sb=document.getElementById('startBtn');if(sb)sb.onclick=function(){const dif=DIFFICULTIES[state.diff];state.running=true;state.over=false;state.paused=false;state.hp=dif.hp;state.maxHp=dif.hp;state.money=dif.money;state.wave=0;state.kills=0;state.totalDmg=0;state.towersLost=0;state.enemies=[];state.towers=[];state.bullets=[];state.effects=[];state.spawnQueue=[];state.waveActive=false;state.betweenTimer=0;state.selectedType=null;state.selectedTower=null;state.speedIdx=0;state.flash=0;state.shake=0;document.getElementById('speedBtn').textContent='⏩ x1';document.getElementById('overlay').classList.add('hidden');updateToolbar();updateInfo();};}
 function update(dt){
 state.time+=dt;
 if(state.flash>0)state.flash-=dt;
@@ -122,10 +146,21 @@ for(const e of state.enemies){
 if(e.dead)continue;
 e.slowT-=dt;
 if(e.type==='boss'&&!e.minionSpawned&&e.hp<e.maxHp*0.5){e.minionSpawned=true;bossSummon(e);}
-if(e.poison&&e.poison.time>0){e.poison.time-=dt;e.poison.tick-=dt;if(e.poison.tick<=0){e.poison.tick=0.5;damageEnemy(e,e.poison.dmg*0.5);}}
+if(e.poison&&e.poison.time>0){e.poison.time-=dt;e.poison.tick-=dt;if(e.poison.tick<=0){e.poison.tick=0.5;damageEnemy(e,e.poison.dmg*0.5);if(e.dead)continue;}}
 const sf=e.slowT>0?1-e.slow:1;const sp=e.speed*sf;
+let attacking=false;
+if(!e.flying){
+const atkRange=e.r+32;
+let tgt=null,td=1/0;
+for(const t of state.towers){const d=Math.hypot(e.x-t.x,e.y-t.y);if(d<=atkRange+13&&d<td){td=d;tgt=t;}}
+if(tgt){
+attacking=true;
+e.atkCd-=dt;
+if(e.atkCd<=0){e.atkCd=e.atkCdMax;const dif=DIFFICULTIES[state.diff];damageTower(tgt,e.atk*dif.eatkMul,e.x,e.y);state.effects.push({type:'slash',x1:e.x,y1:e.y,x2:tgt.x,y2:tgt.y,life:0.15,max:0.15});beep(250,0.06,'square',0.02);}
+}}
+if(!attacking){
 if(e.flying){
-const t=FLY_PATH[e.wp];const dx=t.x-e.x,dy=t.y-e.y;const d=Math.hypot(dx,dy);
+const t2=FLY_PATH[e.wp];const dx=t2.x-e.x,dy=t2.y-e.y;const d=Math.hypot(dx,dy);
 if(d<=sp*dt+0.01){e.dead=true;state.hp-=e.leak;state.flash=0.3;shake(5);beep(140,0.3,'square',0.05);if(state.hp<=0){gameOver();return;}}
 else{e.x+=dx/d*sp*dt;e.y+=dy/d*sp*dt;e.dist+=sp*dt;}
 }else{
@@ -133,6 +168,7 @@ const wp=WAYPOINTS[e.wp];const dx=wp.x-e.x,dy=wp.y-e.y;const d=Math.hypot(dx,dy)
 if(d<=sp*dt+0.01){e.x=wp.x;e.y=wp.y;e.dist+=d;e.wp++;if(e.wp>=WAYPOINTS.length){e.dead=true;state.hp-=e.leak;state.flash=0.3;shake(5);beep(140,0.3,'square',0.05);if(state.hp<=0){gameOver();return;}}}
 else{e.x+=dx/d*sp*dt;e.y+=dy/d*sp*dt;e.dist+=sp*dt;}
 }}
+}
 state.enemies=state.enemies.filter(e=>!e.dead);
 for(const t of state.towers){
 const s=towerStats(t);t.cdLeft-=dt;
@@ -175,8 +211,8 @@ const dx=b.target.x-b.x,dy=b.target.y-b.y;const d=Math.hypot(dx,dy);
 if(d<=b.speed*dt+b.target.r){b.done=true;damageEnemy(b.target,b.dmg);}
 else{b.x+=dx/d*b.speed*dt;b.y+=dy/d*b.speed*dt;}}}
 state.bullets=state.bullets.filter(b=>!b.done);
-for(const f of state.effects)f.life-=dt;
-state.effects=state.effects.filter(f=>f.life>0);
+for(const f2 of state.effects)f2.life-=dt;
+state.effects=state.effects.filter(f2=>f2.life>0);
 if(state.waveActive&&state.spawnQueue.length===0&&state.enemies.length===0){
 state.waveActive=false;state.betweenTimer=5;
 const bonus=25+state.wave*3;state.money+=bonus;
@@ -202,15 +238,22 @@ const sel=state.selectedTower;
 if(sel){const s=towerStats(sel);if(s.range>0){ctx.fillStyle='rgba(255,255,255,0.08)';ctx.beginPath();ctx.arc(sel.x,sel.y,s.range,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(255,255,255,0.35)';ctx.lineWidth=1.5;ctx.stroke();}}
 for(const t of state.towers){
 const d=TOWER_TYPES[t.type];
+if(t.hp<towerStats(t).maxHp){
+ctx.fillStyle='rgba(0,0,0,0.5)';ctx.fillRect(t.x-14,t.y+16,28,4);
+const hpPct=t.hp/towerStats(t).maxHp;
+ctx.fillStyle=hpPct>0.5?'#5bc85b':(hpPct>0.25?'#e8c93d':'#e05252');
+ctx.fillRect(t.x-14,t.y+16,28*hpPct,4);}
 if(t.type==='mine'){ctx.fillStyle=d.color;ctx.beginPath();ctx.arc(t.x,t.y,13,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(0,0,0,0.35)';ctx.lineWidth=2;ctx.stroke();ctx.fillStyle='#8a6d1e';ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('💰',t.x,t.y+1);}
 else{ctx.save();ctx.translate(t.x,t.y);ctx.rotate(t.angle);ctx.fillStyle=d.barrel;ctx.fillRect(0,-4,20,8);ctx.restore();ctx.fillStyle=d.color;ctx.beginPath();ctx.arc(t.x,t.y,13,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(0,0,0,0.35)';ctx.lineWidth=2;ctx.stroke();}
-for(let i=0;i<t.level;i++){ctx.fillStyle='#ffd76a';ctx.beginPath();ctx.arc(t.x-8+i*8,t.y-19,2.5,0,Math.PI*2);ctx.fill();}}
+for(let i=0;i<t.atkLv;i++){ctx.fillStyle='#ff6b4a';ctx.beginPath();ctx.arc(t.x-14+i*5,t.y-19,2.2,0,Math.PI*2);ctx.fill();}
+for(let i=0;i<t.defLv;i++){ctx.fillStyle='#59c3e3';ctx.beginPath();ctx.arc(t.x+14-i*5,t.y-19,2.2,0,Math.PI*2);ctx.fill();}}
 for(const e of state.enemies){
 if(e.type==='boss'){ctx.strokeStyle='rgba(255,100,100,0.5)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(e.x,e.y,e.r+4,0,Math.PI*2);ctx.stroke();}
 ctx.fillStyle=e.color;ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(0,0,0,0.4)';ctx.lineWidth=1.5;ctx.stroke();
 if(e.flying){ctx.strokeStyle='rgba(176,106,212,0.6)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(e.x-e.r-6,e.y);ctx.lineTo(e.x-e.r+2,e.y-8);ctx.stroke();ctx.beginPath();ctx.moveTo(e.x+e.r+6,e.y);ctx.lineTo(e.x+e.r-2,e.y-8);ctx.stroke();}
 if(e.slowT>0){ctx.strokeStyle='rgba(120,220,255,0.9)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(e.x,e.y,e.r+3,0,Math.PI*2);ctx.stroke();}
 if(e.poison&&e.poison.time>0){ctx.strokeStyle='rgba(106,176,76,0.8)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(e.x,e.y,e.r+3,0,Math.PI*2);ctx.stroke();}
+if(e.atkCd>0&&e.atkCd<e.atkCdMax*0.3){ctx.strokeStyle='rgba(255,100,100,0.6)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(e.x,e.y,e.r+5,0,Math.PI*2);ctx.stroke();}
 const pct=Math.max(0,e.hp/e.maxHp),bw=e.r*2;
 ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(e.x-bw/2,e.y-e.r-9,bw,4);
 ctx.fillStyle=pct>0.5?'#5bc85b':(pct>0.25?'#e8c93d':'#e05252');ctx.fillRect(e.x-bw/2,e.y-e.r-9,bw*pct,4);}
@@ -226,6 +269,7 @@ const p=f.life/f.max;
 if(f.type==='boom'){ctx.fillStyle='rgba(255,150,50,'+(p*0.6).toFixed(3)+')';ctx.beginPath();ctx.arc(f.x,f.y,f.r*(1-p*0.4),0,Math.PI*2);ctx.fill();}
 else if(f.type==='pulse'){ctx.strokeStyle='rgba(100,210,255,'+(p*0.7).toFixed(3)+')';ctx.lineWidth=3;ctx.beginPath();ctx.arc(f.x,f.y,f.r*(1-p),0,Math.PI*2);ctx.stroke();}
 else if(f.type==='beam'){ctx.strokeStyle='rgba(255,255,255,'+p.toFixed(3)+')';ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(f.x1,f.y1);ctx.lineTo(f.x2,f.y2);ctx.stroke();}
+else if(f.type==='slash'){ctx.strokeStyle='rgba(255,100,100,'+p.toFixed(3)+')';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(f.x1,f.y1);ctx.lineTo(f.x2,f.y2);ctx.stroke();}
 else if(f.type==='chain'){
 ctx.strokeStyle='rgba(245,230,99,'+p.toFixed(3)+')';ctx.lineWidth=2;
 ctx.beginPath();ctx.moveTo(f.pts[0].x,f.pts[0].y);
@@ -271,25 +315,39 @@ const el=document.getElementById('info');const t=state.selectedTower;
 if(!t){el.style.display='none';return;}
 const d=TOWER_TYPES[t.type];const s=towerStats(t);
 el.style.display='block';
-let html='<b style="color:'+d.color+'">'+d.name+' Lv.'+t.level+'</b>';
-if(t.type==='mine')html+=' — 每次产出 '+s.mineRate+' 金币 · 间隔 '+s.cd.toFixed(1)+'s';
-else{html+=' — 伤害 '+Math.round(s.dmg)+' · 射程 '+Math.round(s.range)+' · 攻速 '+(1/s.cd).toFixed(2)+'/s';
-if(s.splash)html+=' · 爆炸半径 '+Math.round(s.splash);
+let html='<b style="color:'+d.color+'">'+d.name+'</b>';
+html+=' <span style="color:#ff6b4a">⚔Lv.'+t.atkLv+'</span> <span style="color:#59c3e3">🛡Lv.'+t.defLv+'</span>';
+html+=' · ❤️'+Math.ceil(t.hp)+'/'+s.maxHp+' (🛡'+s.armor+')';
+if(t.type==='mine')html+='<br>产出 '+s.mineRate+'/次 · 间隔 '+s.cd.toFixed(1)+'s';
+else{html+='<br>伤害 '+Math.round(s.dmg)+' · 射程 '+Math.round(s.range)+' · 攻速 '+(1/s.cd).toFixed(2)+'/s';
+if(s.splash)html+=' · 爆炸 '+Math.round(s.splash);
 if(s.slow)html+=' · 减速 '+Math.round(s.slow*100)+'%';
-if(s.chain)html+=' · 连锁 '+s.chain+'目标';
-if(s.poisonDmg)html+=' · 毒素 '+Math.round(s.poisonDmg)+'/s×'+s.poisonDur+'s';}
+if(s.chain)html+=' · 连锁'+s.chain;
+if(s.poisonDmg)html+=' · 毒素'+Math.round(s.poisonDmg)+'/s×'+s.poisonDur+'s';}
 html+='<div class="acts">';
-if(t.type!=='mine')html+='<button class="btn blue" id="targetBtn">🎯 优先: '+TARGET_LABELS[t.targetMode||'first']+'</button>';
+if(t.type!=='mine'){
+html+='<button class="btn blue" id="targetBtn">🎯 '+TARGET_LABELS[t.targetMode||'first']+'</button>';
+if(t.atkLv<3)html+='<button class="btn" style="background:#c0392b" id="atkBtn">⚔ 攻击↑ (💰'+atkUpCost(t)+')</button>';
+else html+='<span style="color:#ff6b4a;font-size:11px">⚔满</span>';
+if(t.defLv<3)html+='<button class="btn" style="background:#2d8da8" id="defBtn">🛡 防御↑ (💰'+defUpCost(t)+')</button>';
+else html+='<span style="color:#9db09c;font-size:11px">🛡满</span>';
+if(t.hp<s.maxHp)html+='<button class="btn gold" id="repairBtn">🔧 修理 (💰'+repairCost(t)+')</button>';
+}else{
 if(t.level<3)html+='<button class="btn gold" id="upBtn">⬆ 升级 (💰'+upCost(t)+')</button>';
-else html+='<span style="color:#9db09c">已满级</span>';
+else html+='<span style="color:#9db09c">已满级</span>';}
 html+='<button class="btn danger" id="sellBtn">💰 出售 (+'+sellValue(t)+')</button></div>';
 el.innerHTML=html;
 const tb=document.getElementById('targetBtn');
 if(tb)tb.onclick=function(){const mi=TARGET_MODES.indexOf(t.targetMode||'first');t.targetMode=TARGET_MODES[(mi+1)%TARGET_MODES.length];updateInfo();};
+const ab=document.getElementById('atkBtn');if(ab)ab.onclick=function(){const cost=atkUpCost(t);if(state.money<cost)return;state.money-=cost;t.atkLv++;t.invested+=cost;const s=towerStats(t);t.hp=Math.min(s.maxHp,t.hp+s.maxHp*0.2);beep(520,0.08,'triangle',0.04);setTimeout(()=>beep(660,0.1,'triangle',0.04),80);updateInfo();};
+const db=document.getElementById('defBtn');if(db)db.onclick=function(){const cost=defUpCost(t);if(state.money<cost)return;state.money-=cost;t.defLv++;t.invested+=cost;const s2=towerStats(t);t.hp=s2.maxHp;beep(400,0.1,'sine',0.04);setTimeout(()=>beep(500,0.12,'triangle',0.04),80);updateInfo();};
+const rp=document.getElementById('repairBtn');if(rp)rp.onclick=function(){const cost=repairCost(t);if(state.money<cost||t.hp>=towerStats(t).maxHp)return;state.money-=cost;const s3=towerStats(t);t.hp=s2.maxHp;beep(600,0.08,'sine',0.03);updateInfo();};
 const up=document.getElementById('upBtn');if(up)up.onclick=upgradeTower;
+const sell=document.getElementById('sellBtn');if(sell)sellTower.onclick=sellTower;
 document.getElementById('sellBtn').onclick=sellTower;
 }
-function upgradeTower(){const t=state.selectedTower;if(!t||t.level>=3)return;const cost=upCost(t);if(state.money<cost)return;state.money-=cost;t.level++;t.invested+=cost;beep(520,0.08,'triangle',0.04);setTimeout(()=>beep(660,0.1,'triangle',0.04),80);updateInfo();}
+function upCost(t){return Math.round(TOWER_TYPES[t.type].upCost*(1+0.7*(t.level-1)));}
+function upgradeTower(){const t=state.selectedTower;if(!t||t.atkLv>=3)return;const cost=atkUpCost(t);if(state.money<cost)return;state.money-=cost;t.atkLv++;t.invested+=cost;beep(520,0.08,'triangle',0.04);setTimeout(()=>beep(660,0.1,'triangle',0.04),80);updateInfo();}
 function sellTower(){const t=state.selectedTower;if(!t)return;state.money+=sellValue(t);state.towers=state.towers.filter(x=>x!==t);state.selectedTower=null;beep(300,0.08,'triangle',0.03);updateInfo();}
 function canvasPos(e){const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*canvas.width/r.width,y:(e.clientY-r.top)*canvas.height/r.height};}
 canvas.addEventListener('mousemove',e=>{const p=canvasPos(e);state.mx=p.x;state.my=p.y;});
@@ -305,7 +363,7 @@ const key=c+','+r;if(PATH_CELLS.has(key))return;
 const def=TOWER_TYPES[state.selectedType];
 if(state.money<def.cost){state.effects.push({type:'text',x:p.x,y:p.y-10,txt:'金币不足',life:0.9,max:0.9,color:'#ff6b6b'});return;}
 state.money-=def.cost;
-state.towers.push({type:state.selectedType,c:c,r:r,x:c*CELL+CELL/2,y:r*CELL+CELL/2,level:1,cdLeft:0,angle:0,invested:def.cost,targetMode:'first'});
+state.towers.push({type:state.selectedType,c:c,r:r,x:c*CELL+CELL/2,y:r*CELL+CELL/2,atkLv:1,defLv:1,cdLeft:0,angle:0,invested:def.cost,targetMode:'first',hp:TOWER_TYPES[state.selectedType].hp});
 beep(520,0.06,'triangle',0.03);});
 canvas.addEventListener('contextmenu',function(e){e.preventDefault();state.selectedType=null;state.selectedTower=null;updateInfo();updateToolbar();});
 window.addEventListener('keydown',function(e){
@@ -315,16 +373,90 @@ else if(e.key==='Escape'){state.selectedType=null;state.selectedTower=null;updat
 else if(e.code==='Space'){e.preventDefault();if(state.running&&!state.over)state.paused=!state.paused;}
 else if(e.code==='KeyN'){if(state.running&&!state.over&&!state.waveActive)startWave(true);}});
 document.getElementById('waveBtn').onclick=function(){startWave(true);};
-document.getElementById('speedBtn').onclick=function(){
-state.speedIdx=(state.speedIdx+1)%SPEEDS.length;
-this.textContent='⏩ x'+SPEEDS[state.speedIdx];};
-document.getElementById('fsBtn').onclick=function(){
-if(document.fullscreenElement)document.exitFullscreen();
-else document.documentElement.requestFullscreen().catch(function(){});};
-document.getElementById('muteBtn').onclick=function(){
-state.muted=!state.muted;this.textContent=state.muted?'🔇':'🔊';};
-document.getElementById('startBtn').onclick=function(){
-state.running=true;document.getElementById('overlay').classList.add('hidden');};
+document.getElementById('speedBtn').onclick=function(){state.speedIdx=(state.speedIdx+1)%SPEEDS.length;this.textContent='⏩ x'+SPEEDS[state.speedIdx];};
+document.getElementById('fsBtn').onclick=function(){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen().catch(function(){});};
+document.getElementById('muteBtn').onclick=function(){state.muted=!state.muted;this.textContent=state.muted?'🔇':'🔊';};
+function updateHud(){
+document.getElementById('hp').textContent='❤️ '+Math.max(0,state.hp)+'/'+state.maxHp;
+document.getElementById('money').textContent=state.money;
+document.getElementById('wave').textContent='🌊 第 '+state.wave+' 波';
+const btn=document.getElementById('waveBtn');
+if(!state.running){btn.textContent='⚔️ 开始第 1 波';btn.disabled=true;}
+else if(state.waveActive){btn.textContent='⚔️ 进攻中…';btn.disabled=true;}
+else if(state.wave===0){btn.textContent='⚔️ 开始第 1 波';btn.disabled=false;}
+else{btn.textContent='⚔️ 下一波 ('+Math.max(0,Math.ceil(state.betweenTimer))+'s)';btn.disabled=false;}
+}
+function updateToolbar(){
+const bar=document.getElementById('toolbar');bar.innerHTML='';
+const keys=Object.keys(TOWER_TYPES);
+keys.forEach(function(key,i){
+const d=TOWER_TYPES[key];const btn=document.createElement('button');
+btn.className='tower-btn'+(state.selectedType===key?' active':'');
+btn.innerHTML='<span class="sw" style="background:'+d.color+'"></span>'+d.name+'<br><span class="cost">💰'+d.cost+'</span> <span class="hk">['+(i+1)+']</span>';
+btn.onclick=function(){state.selectedType=state.selectedType===key?null:key;state.selectedTower=null;updateInfo();updateToolbar();};
+bar.appendChild(btn);});
+}
+function updateInfo(){
+const el=document.getElementById('info');const t=state.selectedTower;
+if(!t){el.style.display='none';return;}
+const d=TOWER_TYPES[t.type];const s=towerStats(t);
+el.style.display='block';
+let html='<b style="color:'+d.color+'">'+d.name+'</b>';
+html+=' <span style="color:#ff6b4a">⚔'+t.atkLv+'</span> <span style="color:#59c3e3">🛡'+t.defLv+'</span>';
+html+=' · ❤️'+Math.ceil(t.hp)+'/'+s.maxHp+' · 🛡'+s.armor;
+if(t.type==='mine')html+='<br>产出 '+s.mineRate+'/次 · 间隔 '+s.cd.toFixed(1)+'s';
+else{html+='<br>伤害 '+Math.round(s.dmg)+' · 射程 '+Math.round(s.range)+' · 攻速 '+(1/s.cd).toFixed(2)+'/s';
+if(s.splash)html+=' · 爆炸 '+Math.round(s.splash);
+if(s.slow)html+=' · 减速 '+Math.round(s.slow*100)+'%';
+if(s.chain)html+=' · 连锁'+s.chain;
+if(s.poisonDmg)html+=' · 毒素 '+Math.round(s.poisonDmg)+'/s×'+s.poisonDur+'s';}
+html+='<div class="acts">';
+if(t.type!=='mine'){
+html+='<button class="btn blue" id="targetBtn">🎯 '+TARGET_LABELS[t.targetMode||'first']+'</button>';
+if(t.atkLv<3)html+='<button class="btn red" id="atkBtn">⚔ 攻击↑ (💰'+atkUpCost(t)+')</button>';
+if(t.defLv<3)html+='<button class="btn blue" id="defBtn">🛡 防御↑ (💰'+defUpCost(t)+')</button>';
+if(t.hp<towerStats(t).maxHp)html+='<button class="btn gold" id="repairBtn">🔧 修理 (💰'+repairCost(t)+')</button>';}
+if(t.type==='mine'){if(t.atkLv<3)html+='<button class="btn gold" id="upBtn">⬆ 升级 (💰'+atkUpCost(t)+')</button>';else html+='<span style="color:#9db09c">已满级</span>';}
+html+='<button class="btn danger" id="sellBtn">💰 出售 (+'+sellValue(t)+')</button></div>';
+el.innerHTML=html;
+const tb=document.getElementById('targetBtn');
+if(tb)tb.onclick=function(){const mi=TARGET_MODES.indexOf(t.targetMode||'first');t.targetMode=TARGET_MODES[(mi+1)%TARGET_MODES.length];updateInfo();};
+const ab=document.getElementById('atkBtn');if(ab)ab.onclick=upgradeAtk;
+const db=document.getElementById('defBtn');if(db)db.onclick=upgradeDef;
+const rp=document.getElementById('repairBtn');if(rp)rp.onclick=repairTower;
+const up=document.getElementById('upBtn');if(up)up.onclick=upgradeAtk;
+const sl=document.getElementById('sellBtn');if(sl)sl.onclick=sellTower;
+}
+function upgradeAtk(){const t=state.selectedTower;if(!t||t.atkLv>=3)return;const cost=atkUpCost(t);if(state.money<cost)return;state.money-=cost;t.atkLv++;t.invested+=cost;beep(520,0.08,'triangle',0.04);setTimeout(()=>beep(660,0.1,'triangle',0.04),80);updateInfo();}
+function upgradeDef(){const t=state.selectedTower;if(!t||t.defLv>=3)return;const cost=defUpCost(t);if(state.money<cost)return;state.money-=cost;t.defLv++;t.invested+=cost;const s=towerStats(t);t.hp=s.maxHp;beep(400,0.1,'triangle',0.04);setTimeout(()=>beep(500,0.12,'triangle',0.04),80);updateInfo();}
+function repairTower(){const t=state.selectedTower;if(!t)return;const s=towerStats(t);if(t.hp>=s.maxHp)return;const cost=repairCost(t);if(state.money<cost)return;state.money-=cost;t.hp=s.maxHp;beep(600,0.08,'sine',0.03);updateInfo();}
+function canvasPos(e){const r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)*canvas.width/r.width,y:(e.clientY-r.top)*canvas.height/r.height};}
+canvas.addEventListener('mousemove',e=>{const p=canvasPos(e);state.mx=p.x;state.my=p.y;});
+canvas.addEventListener('click',function(e){
+if(!state.running||state.over)return;
+const p=canvasPos(e);const c=Math.floor(p.x/CELL),r=Math.floor(p.y/CELL);
+if(c<0||c>=COLS||r<0||r>=ROWS)return;
+const ex=state.towers.find(t=>t.c===c&&t.r===r);
+if(ex){state.selectedTower=ex;updateInfo();return;}
+state.selectedTower=null;updateInfo();
+if(!state.selectedType)return;
+const key=c+','+r;if(PATH_CELLS.has(key))return;
+const def=TOWER_TYPES[state.selectedType];
+if(state.money<def.cost){state.effects.push({type:'text',x:p.x,y:p.y-10,txt:'金币不足',life:0.9,max:0.9,color:'#ff6b6b'});return;}
+state.money-=def.cost;
+state.towers.push({type:state.selectedType,c:c,r:r,x:c*CELL+CELL/2,y:r*CELL+CELL/2,atkLv:1,defLv:1,hp:TOWER_TYPES[state.selectedType].hp,cdLeft:0,angle:0,invested:def.cost,targetMode:'first'});
+beep(520,0.06,'triangle',0.03);});
+canvas.addEventListener('contextmenu',function(e){e.preventDefault();state.selectedType=null;state.selectedTower=null;updateInfo();updateToolbar();});
+window.addEventListener('keydown',function(e){
+const keys=Object.keys(TOWER_TYPES);
+if(e.key>='1'&&e.key<='8'){const key=keys[parseInt(e.key,10)-1];if(key){state.selectedType=state.selectedType===key?null:key;state.selectedTower=null;updateInfo();updateToolbar();}}
+else if(e.key==='Escape'){state.selectedType=null;state.selectedTower=null;updateInfo();updateToolbar();}
+else if(e.code==='Space'){e.preventDefault();if(state.running&&!state.over)state.paused=!state.paused;}
+else if(e.code==='KeyN'){if(state.running&&!state.over&&!state.waveActive)startWave(true);}});
+document.getElementById('waveBtn').onclick=function(){startWave(true);};
+document.getElementById('speedBtn').onclick=function(){state.speedIdx=(state.speedIdx+1)%SPEEDS.length;this.textContent='⏩ x'+SPEEDS[state.speedIdx];};
+document.getElementById('fsBtn').onclick=function(){if(document.fullscreenElement)document.exitFullscreen();else document.documentElement.requestFullscreen().catch(function(){});};
+document.getElementById('muteBtn').onclick=function(){state.muted=!state.muted;this.textContent=state.muted?'🔇':'🔊';};
 updateToolbar();
 let last=performance.now();
 function frame(now){
@@ -332,5 +464,6 @@ const dt=Math.min(0.05,(now-last)/1000);last=now;
 if(state.running&&!state.paused&&!state.over){update(dt*SPEEDS[state.speedIdx]);}
 draw();updateHud();requestAnimationFrame(frame);}
 requestAnimationFrame(frame);
+bindStartUI();
 if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(function(){});}
 </script></body></html>
